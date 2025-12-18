@@ -9,6 +9,7 @@ from bson import ObjectId
 # Database and collection names
 DATABASE_NAME = "production"
 COLLECTION_NAME = "production_items"
+EXTRACTION_METADATA_COLLECTION = "extraction_metadata"
 
 
 class ProductionDates(BaseModel):
@@ -65,6 +66,47 @@ class ProductionItemModel(BaseModel):
 
     @classmethod
     def from_document(cls, doc: dict) -> "ProductionItemModel":
+        """Create model instance from MongoDB document."""
+        if doc and "_id" in doc:
+            doc["_id"] = str(doc["_id"])
+        return cls(**doc)
+
+
+class ExtractionMetadataModel(BaseModel):
+    """MongoDB document model for extraction metadata."""
+
+    id: Optional[str] = Field(default=None, alias="_id")
+
+    file_name: str
+    sheet_name: str
+
+    extraction_status: str = "pending"  # pending, in_progress, completed, failed
+    extraction_error: Optional[str] = None
+
+    total_rows: Optional[int] = None
+    extracted_rows: Optional[int] = None
+    failed_rows: Optional[int] = None
+
+    column_mapping: Optional[dict] = None  # Maps source columns to target fields
+    stage_order: Optional[list[str]] = None  # Detected stage order from file
+
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+    def to_document(self) -> dict:
+        """Convert model to MongoDB document for insertion."""
+        doc = self.model_dump(by_alias=True, exclude_none=True)
+        if "_id" in doc and doc["_id"] is None:
+            del doc["_id"]
+        return doc
+
+    @classmethod
+    def from_document(cls, doc: dict) -> "ExtractionMetadataModel":
         """Create model instance from MongoDB document."""
         if doc and "_id" in doc:
             doc["_id"] = str(doc["_id"])

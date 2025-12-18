@@ -231,3 +231,209 @@ def merge_excel_headers_with_info(
     }
     
     return result_df, info
+
+
+def identify_group_columns(df: pd.DataFrame, null_threshold: float = 0.1) -> list:
+    """
+    Identify columns that appear to be grouped (have NaN values that should be forward-filled).
+    
+    These are typically columns like Style Code, Fabric Spec, Supplier where:
+    - The first row of a group has the value
+    - Subsequent rows in the group have NaN (inheriting from parent)
+    
+    Args:
+        df: DataFrame with merged headers
+        null_threshold: Minimum proportion of NaN values to consider a column as grouped
+        
+    Returns:
+        list: Column names that appear to be grouped columns
+    """
+    group_columns = []
+    
+    for col in df.columns:
+        null_count = df[col].isna().sum()
+        null_ratio = null_count / len(df) if len(df) > 0 else 0
+        
+        # A column is considered a group column if:
+        # 1. It has some NaN values (above threshold)
+        # 2. But not ALL values are NaN (that would be an empty column)
+        # 3. The NaN values appear to follow a pattern (not random)
+        if null_threshold <= null_ratio < 1.0:
+            # Check if NaN values follow a grouping pattern
+            # (NaN values should follow non-NaN values, not be at the start)
+            if not df[col].isna().iloc[0]:  # First value should not be NaN
+                group_columns.append(col)
+    
+    return group_columns
+
+
+def expand_merged_rows(
+    df: pd.DataFrame,
+    columns_to_fill: Optional[list] = None,
+    auto_detect: bool = True,
+    null_threshold: float = 0.1
+) -> pd.DataFrame:
+    """
+    Expand merged rows by forward-filling grouped columns.
+    
+    In many Excel files, production orders are grouped where:
+    - Multiple color variants share the same Style Code, Fabric Spec, Supplier
+    - Only the first row of each group has these values filled
+    - Subsequent rows have NaN for these inherited columns
+    
+    This function forward-fills these columns so every row has complete data.
+    
+    Args:
+        df: DataFrame with merged headers (output from merge_excel_headers)
+        columns_to_fill: Explicit list of column names to forward-fill.
+                        If None and auto_detect=True, columns are auto-detected.
+        auto_detect: Whether to automatically detect group columns (default: True)
+        null_threshold: For auto-detection, minimum NaN ratio to consider grouped
+        
+    Returns:
+        pd.DataFrame: DataFrame with all grouped columns forward-filled
+        
+    Example:
+        >>> df = merge_excel_headers('tna-dos.xlsx')
+        >>> df_expanded = expand_merged_rows(df)
+        >>> # Now every row has Style Code, Fabric Spec, Supplier filled
+    """
+    result_df = df.copy()
+    
+    # Determine which columns to forward-fill
+    if columns_to_fill is not None:
+        # Use explicitly provided columns
+        fill_columns = [col for col in columns_to_fill if col in result_df.columns]
+    elif auto_detect:
+        # Auto-detect group columns
+        fill_columns = identify_group_columns(result_df, null_threshold)
+    else:
+        # No columns to fill
+        fill_columns = []
+    
+    # Forward-fill the identified columns
+    if fill_columns:
+        result_df[fill_columns] = result_df[fill_columns].ffill()
+    
+    return result_df
+
+
+def expand_merged_rows_with_info(
+    df: pd.DataFrame,
+    columns_to_fill: Optional[list] = None,
+    auto_detect: bool = True,
+    null_threshold: float = 0.1
+) -> tuple:
+    """
+    Expand merged rows and return information about the expansion.
+    
+    Args:
+        df: DataFrame with merged headers
+        columns_to_fill: Explicit list of columns to forward-fill
+        auto_detect: Whether to auto-detect group columns
+        null_threshold: For auto-detection, minimum NaN ratio
+        
+    Returns:
+        tuple: (expanded DataFrame, dict with expansion info)
+    """
+    # Get columns that will be filled
+    if columns_to_fill is not None:
+        fill_columns = [col for col in columns_to_fill if col in df.columns]
+    elif auto_detect:
+        fill_columns = identify_group_columns(df, null_threshold)
+    else:
+        fill_columns = []
+    
+    # Count NaNs before expansion
+    null_counts_before = {col: df[col].isna().sum() for col in fill_columns}
+    
+    # Expand
+    result_df = expand_merged_rows(df, columns_to_fill, auto_detect, null_threshold)
+    
+    # Count NaNs after expansion
+    null_counts_after = {col: result_df[col].isna().sum() for col in fill_columns}
+    
+    info = {
+        'columns_filled': fill_columns,
+        'null_counts_before': null_counts_before,
+        'null_counts_after': null_counts_after,
+        'rows_affected': sum(null_counts_before.values()),
+        'total_rows': len(df)
+    }
+    
+    return result_df, info
+
+
+def process_excel_file(
+    excel_path: Union[str, Path],
+    sheet_name: Optional[Union[str, int]] = 0,
+    expand_rows: bool = True,
+    columns_to_fill: Optional[list] = None
+) -> pd.DataFrame:
+    """
+    Complete Excel processing pipeline: merge headers and expand merged rows.
+    
+    This is a convenience function that combines:
+    1. merge_excel_headers() - Combine multi-row headers into single headers
+    2. expand_merged_rows() - Forward-fill grouped columns
+    
+    Args:
+        excel_path: Path to the Excel file
+        sheet_name: Sheet name or index (default: 0)
+        expand_rows: Whether to expand merged rows (default: True)
+        columns_to_fill: Explicit columns to forward-fill (auto-detected if None)
+        
+    Returns:
+        pd.DataFrame: Fully processed DataFrame with:
+            - Semantic column headers
+            - All rows having complete data (no grouped NaN values)
+            
+    Example:
+        >>> df = process_excel_file('tna-dos.xlsx')
+        >>> # Returns DataFrame with merged headers and expanded rows
+    """
+    # Step 1: Merge headers
+    df = merge_excel_headers(excel_path, sheet_name)
+    
+    # Step 2: Expand merged rows (if requested)
+    if expand_rows:
+        df = expand_merged_rows(df, columns_to_fill)
+    
+    return df
+
+
+def process_excel_file_with_info(
+    excel_path: Union[str, Path],
+    sheet_name: Optional[Union[str, int]] = 0,
+    expand_rows: bool = True,
+    columns_to_fill: Optional[list] = None
+) -> tuple:
+    """
+    Complete Excel processing pipeline with detailed information.
+    
+    Args:
+        excel_path: Path to the Excel file
+        sheet_name: Sheet name or index
+        expand_rows: Whether to expand merged rows
+        columns_to_fill: Explicit columns to forward-fill
+        
+    Returns:
+        tuple: (processed DataFrame, dict with processing info)
+    """
+    # Step 1: Merge headers with info
+    df, header_info = merge_excel_headers_with_info(excel_path, sheet_name)
+    
+    # Step 2: Expand merged rows with info (if requested)
+    if expand_rows:
+        df, expand_info = expand_merged_rows_with_info(df, columns_to_fill)
+    else:
+        expand_info = {'columns_filled': [], 'rows_affected': 0}
+    
+    info = {
+        'header_processing': header_info,
+        'row_expansion': expand_info,
+        'final_shape': df.shape,
+        'final_columns': df.columns.tolist()
+    }
+    
+    return df, info

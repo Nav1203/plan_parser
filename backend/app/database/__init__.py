@@ -4,8 +4,10 @@ from app.database.models import (
     ProductionItemModel,
     ProductionDates,
     ProductionSource,
+    ExtractionMetadataModel,
     DATABASE_NAME,
     COLLECTION_NAME,
+    EXTRACTION_METADATA_COLLECTION,
 )
 from app.database.repository import ProductionRepository
 
@@ -18,8 +20,10 @@ __all__ = [
     "ProductionItemModel",
     "ProductionDates",
     "ProductionSource",
+    "ExtractionMetadataModel",
     "DATABASE_NAME",
     "COLLECTION_NAME",
+    "EXTRACTION_METADATA_COLLECTION",
     # Repository
     "ProductionRepository",
 ]
