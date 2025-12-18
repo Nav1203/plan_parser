@@ -1,4 +1,5 @@
 import random
+import json
 import pandas as pd
 
 class SystemPromptTemplate:
@@ -38,33 +39,56 @@ class UserPromptTemplate:
             })
 
         columns_samples = json.dumps(columns_samples,indent=2)
-        return """You are given column metadata extracted from a production tracking Excel sheet.
+
+        expected_output_json=json.dumps({
+            "columns": [
+                {
+                "column_name": "string",
+                "role": "identifier | quantity | stage_date | ignore",
+
+                "field": "order_number | style | color | order_quantity | null",
+
+                "stage": "fabric | cutting | embroidery | sewing | finishing | vap | packing | shipping | null",
+
+                "date_type": "planned | actual | unknown | null",
+
+                "confidence": 0.0,
+
+                "notes": "string"
+                }
+            ]
+        },indent=2)
+        return f"""You are given column metadata extracted from a production tracking Excel sheet.
 
 Context:
 - The sheet tracks production orders through multiple manufacturing stages.
 - Column headers have already been merged into single semantic strings.
 - Columns may represent identifiers, quantities, stage milestone dates, or irrelevant information.
-- Stage names may be abbreviated or inconsistently phrased.
+- Stage names may be abbreviated, phrased differently, or use domain-specific synonyms.
 
 Your task:
 For each column, classify it into exactly ONE of the following roles:
 
 1. identifier
-   - order_number
-   - style
-   - color
+   - requires identifying one of:
+     - order_number
+     - style
+     - color
+     - fabric_spec
+     - supplier
 
 2. quantity
-   - order_quantity
+   - requires identifying:
+     - quantity_type = order_quantity
 
 3. stage_date
    - requires identifying:
-     - stage name (normalized)
-     - date type (planned | actual)
+     - normalized stage name
+     - date type (planned | actual | unknown)
 
 4. ignore
 
-Possible stage names:
+Canonical production stages:
 - fabric
 - cutting
 - embroidery
@@ -74,42 +98,37 @@ Possible stage names:
 - packing
 - shipping
 
+Stage mapping rules:
+- If a column refers to a production stage using a different name, abbreviation, or synonym,
+  map it to the closest matching canonical stage.
+- Examples:
+  - "feeding" → sewing
+  - "line loading" → sewing
+  - "fabric inhouse" → fabric
+- Only ignore a column if:
+  - It is clearly unrelated to production tracking, AND
+  - It does not semantically map to any canonical stage.
 
-Rules:
+Additional rules:
 - Do NOT invent columns, stages, or values.
-- Do NOT normalize header text beyond stage name identification.
-- If a column does not clearly belong to any role, mark it as "ignore".
-- If unsure between planned vs actual, use "unknown".
+- Do NOT normalize or rewrite header text beyond identifying the stage name.
 - Base decisions on BOTH header text and sample values.
+- If planned vs actual cannot be confidently determined, use "unknown".
+- Each column must be assigned exactly one role.
+- Quantity columns represent total order-level quantities unless explicitly stated otherwise.
 
 Input format:
 Each column is provided as:
-{
+{{
   "column_name": "string",
   "sample_values": ["value1", "value2", "..."]
-}
+}}
 
 Input:
-{columns_samples_json}
+{columns_samples}
 
 Output format:
-Return STRICT JSON only, matching this schema:
+Return STRICT JSON only, matching this schema exactly:
 
-{
-  "columns": [
-    {
-      "column_name": "string",
-      "role": "identifier | quantity | stage_date | ignore",
-
-      "field": "order_number | style | color | order_quantity | null",
-
-      "stage": "fabric | cutting | embroidery | sewing | finishing | vap | packing | shipping | null",
-
-      "date_type": "planned | actual | unknown | null",
-
-      "confidence": 0.0,
-
-      "notes": "string"
-    }
-  ]
-}""".format(columns_samples_json=columns_samples)
+{expected_output_json}
+"""
