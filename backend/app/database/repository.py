@@ -9,16 +9,18 @@ from app.database.models import (
     ProductionItemModel,
     ProductionDates,
     ProductionSource,
+    ExtractionMetadataModel,
     COLLECTION_NAME,
+    EXTRACTION_METADATA_COLLECTION,
 )
-
+from app.database.connection import get_database
 
 class ProductionRepository:
     """Repository for production items CRUD operations."""
 
-    def __init__(self, db: AsyncIOMotorDatabase):
-        self.db = db
-        self.collection = db[COLLECTION_NAME]
+    def __init__(self):
+        self.db = get_database()
+        self.collection = self.db[COLLECTION_NAME]
 
     async def create(self, item: ProductionItemModel) -> ProductionItemModel:
         """Insert a new production item into the database."""
@@ -156,3 +158,43 @@ class ProductionRepository:
         )
 
         return ProductionItemModel.from_document(result)
+
+
+class ExtractionMetadataRepository:
+    """Repository for extraction metadata CRUD operations."""
+
+    def __init__(self,):
+        self.db = get_database()
+        self.collection = self.db[EXTRACTION_METADATA_COLLECTION]
+
+    async def create(self, metadata: ExtractionMetadataModel) -> ExtractionMetadataModel:
+        """Insert extraction metadata into the database."""
+        doc = metadata.to_document()
+        result = await self.collection.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        return ExtractionMetadataModel.from_document(doc)
+
+    async def get_by_id(self, metadata_id: str) -> Optional[ExtractionMetadataModel]:
+        """Get extraction metadata by its ID."""
+        try:
+            doc = await self.collection.find_one({"_id": ObjectId(metadata_id)})
+            if doc:
+                return ExtractionMetadataModel.from_document(doc)
+        except Exception:
+            pass
+        return None
+
+    async def get_by_file_name(self, file_name: str) -> Optional[ExtractionMetadataModel]:
+        """Get extraction metadata by file name."""
+        doc = await self.collection.find_one({"file_name": file_name})
+        if doc:
+            return ExtractionMetadataModel.from_document(doc)
+        return None
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> list[ExtractionMetadataModel]:
+        """Get all extraction metadata with pagination."""
+        cursor = self.collection.find().skip(skip).limit(limit).sort("upload_date", -1)
+        items = []
+        async for doc in cursor:
+            items.append(ExtractionMetadataModel.from_document(doc))
+        return items

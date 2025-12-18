@@ -49,7 +49,7 @@ class Database:
 database = Database()
 
 
-async def get_database() -> AsyncIOMotorDatabase:
+def get_database() -> AsyncIOMotorDatabase:
     """Dependency to get database instance."""
     if database.db is None:
         raise RuntimeError("Database not initialized")

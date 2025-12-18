@@ -6,15 +6,13 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.database import get_database
 from app.schemas import ProductionItemResponse, ProductionItemsListResponse
 from app.services import ProductionService
+from app.services.data_parser.core import DataParser
 
 router = APIRouter()
 
 
 @router.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    db: AsyncIOMotorDatabase = Depends(get_database),
-):
+async def upload_file(file: UploadFile = File(...)):
     """Upload and parse production planning sheet."""
     # Validate file type
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
@@ -23,14 +21,15 @@ async def upload_file(
             detail="Invalid file type. Please upload an Excel file (.xlsx or .xls)",
         )
 
-    # TODO: Implement file parsing logic using ExcelParser
+    data_parser = DataParser()
+    items = await data_parser.parse_data_from_excel(file)
+
     return JSONResponse(
         status_code=200,
         content={
-            "message": "File received successfully",
+            "message": "File processed successfully",
             "filename": file.filename,
-            "size": file.size,
-            "status": "pending_processing",
+            "items_created": len(items),
         },
     )
 

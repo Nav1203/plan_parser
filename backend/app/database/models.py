@@ -1,7 +1,7 @@
 """Production database models for MongoDB."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
@@ -19,6 +19,13 @@ class ProductionDates(BaseModel):
     cutting: Optional[str] = None
     sewing: Optional[str] = None
     shipping: Optional[str] = None
+
+
+class StageData(BaseModel):
+    """Data for a single production stage."""
+    
+    stage_name: str
+    fields: Dict[str, Any] = Field(default_factory=dict)  # field_name -> value
 
 
 class ProductionSource(BaseModel):
@@ -43,6 +50,8 @@ class ProductionItemModel(BaseModel):
     status: str = "pending"
 
     dates: Optional[ProductionDates] = None
+    
+    stages: Dict[str, StageData] = Field(default_factory=dict)  # stage_name -> StageData
 
     stage_order: list[str] = Field(
         default_factory=lambda: ["fabric", "cutting", "sewing", "shipping"]
@@ -78,21 +87,18 @@ class ExtractionMetadataModel(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
 
     file_name: str
-    sheet_name: str
+    upload_date: datetime
 
-    extraction_status: str = "pending"  # pending, in_progress, completed, failed
-    extraction_error: Optional[str] = None
+    # Processing info from process_excel_file_with_info
+    header_row_count: int
+    original_shape: tuple[int, int]
+    final_shape: tuple[int, int]
+    final_columns: list[str]
+    columns_filled: list[str]
+    rows_affected: int
 
-    total_rows: Optional[int] = None
-    extracted_rows: Optional[int] = None
-    failed_rows: Optional[int] = None
-
-    column_mapping: Optional[dict] = None  # Maps source columns to target fields
-    stage_order: Optional[list[str]] = None  # Detected stage order from file
-
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    # Column mapping from LLM
+    column_mapping: dict
 
     class Config:
         populate_by_name = True

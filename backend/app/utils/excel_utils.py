@@ -125,8 +125,7 @@ def remove_consecutive_duplicates(tokens: list) -> list:
 
 
 def merge_excel_headers(
-    excel_path: Union[str, Path],
-    sheet_name: Optional[Union[str, int]] = 0
+    df: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Merge multi-row Excel headers into single semantic column headers.
@@ -150,9 +149,6 @@ def merge_excel_headers(
         >>> print(df.columns.tolist())
         ['Nike Fall 2025 IO Number', 'Nike Fall 2025 Style', ...]
     """
-    # Step 1: Load the Excel sheet without headers, preserving original layout
-    df = pd.read_excel(excel_path, sheet_name=sheet_name, header=None)
-    
     # Step 2: Detect the number of header rows
     header_row_count = detect_header_row_count(df)
     
@@ -205,8 +201,7 @@ def merge_excel_headers(
 
 
 def merge_excel_headers_with_info(
-    excel_path: Union[str, Path],
-    sheet_name: Optional[Union[str, int]] = 0
+    df: pd.DataFrame
 ) -> tuple:
     """
     Merge headers and return additional information about the processing.
@@ -218,10 +213,9 @@ def merge_excel_headers_with_info(
     Returns:
         tuple: (DataFrame, dict with processing info)
     """
-    df = pd.read_excel(excel_path, sheet_name=sheet_name, header=None)
     header_row_count = detect_header_row_count(df)
     
-    result_df = merge_excel_headers(excel_path, sheet_name)
+    result_df = merge_excel_headers(df)
     
     info = {
         'original_shape': df.shape,
@@ -250,9 +244,16 @@ def identify_group_columns(df: pd.DataFrame, null_threshold: float = 0.1) -> lis
     """
     group_columns = []
     
-    for col in df.columns:
-        null_count = df[col].isna().sum()
-        null_ratio = null_count / len(df) if len(df) > 0 else 0
+    if len(df) == 0:
+        return group_columns
+    
+    # Iterate by column index to handle duplicate column names
+    for col_idx in range(len(df.columns)):
+        col_name = df.columns[col_idx]
+        col_series = df.iloc[:, col_idx]
+        
+        null_count = int(col_series.isna().sum())
+        null_ratio = null_count / len(df)
         
         # A column is considered a group column if:
         # 1. It has some NaN values (above threshold)
@@ -261,8 +262,9 @@ def identify_group_columns(df: pd.DataFrame, null_threshold: float = 0.1) -> lis
         if null_threshold <= null_ratio < 1.0:
             # Check if NaN values follow a grouping pattern
             # (NaN values should follow non-NaN values, not be at the start)
-            if not df[col].isna().iloc[0]:  # First value should not be NaN
-                group_columns.append(col)
+            first_is_null = pd.isna(col_series.iloc[0])
+            if not first_is_null:  # First value should not be NaN
+                group_columns.append(col_name)
     
     return group_columns
 
@@ -344,14 +346,25 @@ def expand_merged_rows_with_info(
     else:
         fill_columns = []
     
-    # Count NaNs before expansion
-    null_counts_before = {col: df[col].isna().sum() for col in fill_columns}
+    # Count NaNs before expansion (handle duplicate column names by using first occurrence)
+    null_counts_before = {}
+    for col in fill_columns:
+        col_idx = df.columns.get_loc(col)
+        if isinstance(col_idx, slice) or hasattr(col_idx, '__iter__'):
+            # Duplicate column name - use first occurrence
+            col_idx = col_idx.start if isinstance(col_idx, slice) else list(col_idx)[0]
+        null_counts_before[col] = int(df.iloc[:, col_idx].isna().sum())
     
     # Expand
     result_df = expand_merged_rows(df, columns_to_fill, auto_detect, null_threshold)
     
     # Count NaNs after expansion
-    null_counts_after = {col: result_df[col].isna().sum() for col in fill_columns}
+    null_counts_after = {}
+    for col in fill_columns:
+        col_idx = result_df.columns.get_loc(col)
+        if isinstance(col_idx, slice) or hasattr(col_idx, '__iter__'):
+            col_idx = col_idx.start if isinstance(col_idx, slice) else list(col_idx)[0]
+        null_counts_after[col] = int(result_df.iloc[:, col_idx].isna().sum())
     
     info = {
         'columns_filled': fill_columns,
@@ -403,8 +416,7 @@ def process_excel_file(
 
 
 def process_excel_file_with_info(
-    excel_path: Union[str, Path],
-    sheet_name: Optional[Union[str, int]] = 0,
+    df: pd.DataFrame,
     expand_rows: bool = True,
     columns_to_fill: Optional[list] = None
 ) -> tuple:
@@ -421,7 +433,7 @@ def process_excel_file_with_info(
         tuple: (processed DataFrame, dict with processing info)
     """
     # Step 1: Merge headers with info
-    df, header_info = merge_excel_headers_with_info(excel_path, sheet_name)
+    df, header_info = merge_excel_headers_with_info(df)
     
     # Step 2: Expand merged rows with info (if requested)
     if expand_rows:
