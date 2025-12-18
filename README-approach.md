@@ -130,3 +130,9 @@ Stores processing metadata for each uploaded file.
 
 - **Flexible `stages` dict** allows new stages without schema changes.
 - **Metadata tracking** enables debugging and audit of extraction logic along with confidence check and LLM remarks for classification which can be used to refine classification prompt.
+
+---
+
+## Disclaimer
+
+I have used AI tools (Cursor, ChatGPT) for helping to understand the data and at the same time do a lot of the heavy lifting in terms of writing syntax, since no prehand warning wasn't given suggesting not to. The apporach and the method implemented remains to be my contribution. Looking forward to your review.
